@@ -288,13 +288,13 @@ class MonopolyEnv(gym.Env):
         developable_properties = self._get_developable_properties(player)
         
         if not developable_properties:
-            return -1  # Small penalty for invalid action
+            return 0  # Small penalty for invalid action
         
         # Choose the best property to develop (simple heuristic: highest rent potential)
         best_property = self._choose_best_development_property(player, developable_properties)
         
         if best_property is None:
-            return -1
+            return 0
         
         return self._build_on_property(player, best_property)
 
@@ -405,7 +405,7 @@ class MonopolyEnv(gym.Env):
         
         # Check if can afford
         if self.money[player] < house_cost:
-            return -2  # Penalty for trying to build without money
+            return 0  # Penalty for trying to build without money(outdated)
         
         # Build house or convert to hotel
         if current_houses < 4:
@@ -430,7 +430,7 @@ class MonopolyEnv(gym.Env):
             
         else:
             # Already has hotel
-            return -1
+            return 0
         
         return reward
 

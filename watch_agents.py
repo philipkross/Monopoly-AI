@@ -1,7 +1,8 @@
 import torch
 import time
+import numpy as np
 from Monopoly_env import MonopolyEnv
-from agent_training import DQN, obs_to_state
+from agent_training import DQN, obs_to_state, get_action_mask
 
 def watch_trained_agents(model_files, num_games=1, step_delay=1.0, enable_render=True):
     """
@@ -15,9 +16,9 @@ def watch_trained_agents(model_files, num_games=1, step_delay=1.0, enable_render
     """
     
     # Initialize environment
-    env = MonopolyEnv()  
+    env = MonopolyEnv()
+    obs, _ = env.reset()
     
-   
     input_dim = len(obs_to_state(obs, 0))
     n_actions = env.action_space.n
     
@@ -30,19 +31,19 @@ def watch_trained_agents(model_files, num_games=1, step_delay=1.0, enable_render
             agent.load_state_dict(torch.load(model_file, map_location='cpu'))
             agent.eval() 
             agents.append(agent)
-            print(f" Agent {i} loaded successfully")
+            print(f"✓ Agent {i} loaded successfully")
         except FileNotFoundError:
-            print(f" Model file {model_file} not found!")
+            print(f"✗ Model file {model_file} not found!")
             return
         except Exception as e:
-            print(f" Error loading {model_file}: {e}")
+            print(f"✗ Error loading {model_file}: {e}")
             return
     
-    print(f"\n Starting {num_games} demonstration game(s)")
+    print(f"\n🎮 Starting {num_games} demonstration game(s)")
     print("=" * 50)
     
     for game in range(num_games):
-        print(f"\n Game {game + 1}/{num_games}")
+        print(f"\n🎲 Game {game + 1}/{num_games}")
         obs, _ = env.reset()
         done = False
         step_count = 0
@@ -54,38 +55,41 @@ def watch_trained_agents(model_files, num_games=1, step_delay=1.0, enable_render
             # Get current state
             state = torch.tensor(obs_to_state(obs, current_player), dtype=torch.float32).unsqueeze(0)
             
-            # Agent selects best action (no exploration)
-            with torch.no_grad():
-                q_values = current_agent(state)
-                action = q_values.argmax(dim=1).item()
+            # Get action mask
+            action_mask = get_action_mask(obs, current_player, env)
+            mask_tensor = torch.tensor(action_mask, dtype=torch.float32).unsqueeze(0)
             
+            # Agent selects best action (no exploration) WITH MASK
+            with torch.no_grad():
+                q_values = current_agent(state, mask_tensor)
+                action = q_values.argmax(dim=1).item()
             
             if enable_render:
                 print(f"\n--- Step {step_count + 1} ---")
                 print(f"Player {current_player + 1}'s turn")
-                print(f"Current position: {obs['position'][current_player]}")
+                print(f"Current position: {obs['position'][current_player]} ({env.board[obs['position'][current_player]]['name']})")
                 print(f"Money: ${obs['money'][current_player]}")
+                print(f"Valid actions: {get_valid_action_names(action_mask)}")
                 print(f"Action chosen: {get_action_name(action)}")
             
-            
+            # Take action
             obs, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             step_count += 1
             
             # Show result
             if enable_render:
-                print(f"New position: {obs['position'][current_player]}")
+                print(f"New position: {obs['position'][current_player]} ({env.board[obs['position'][current_player]]['name']})")
                 print(f"Money after move: ${obs['money'][current_player]}")
                 print(f"Reward: {reward}")
                 
-                
+                # Render the board
                 env.render()
                 
                 # Check for game end
-                
                 if done:
                     winner = env.game_winner if hasattr(env, 'game_winner') and env.game_winner >= 0 else "Unknown"
-                    print(f"\nGame Over! Winner: Player {winner + 1 if isinstance(winner, int) else winner}")
+                    print(f"\n🏆 Game Over! Winner: Player {winner + 1 if isinstance(winner, int) else winner}")
                     print(f"Final money: {obs['money']}")
                     print(f"Game length: {step_count} steps")
                 
@@ -94,12 +98,12 @@ def watch_trained_agents(model_files, num_games=1, step_delay=1.0, enable_render
             
             # Safety limit
             if step_count > 1000:
-                print("Game truncated at 1000 steps")
+                print("⚠️ Game truncated at 1000 steps")
                 break
         
-        print(f"\nGame {game + 1} completed in {step_count} steps")
+        print(f"\n✓ Game {game + 1} completed in {step_count} steps")
     
-    print("Demonstration complete!")
+    print("\n🎬 Demonstration complete!")
 
 def get_action_name(action):
     """Convert action number to readable name"""
@@ -109,15 +113,19 @@ def get_action_name(action):
         2: "Draw chance card",
         3: "Draw community chest",
         4: "Pay jail fee",
-        5: "Build house"
+        5: "Build house/hotel"
     }
     return action_names.get(action, f"Unknown action {action}")
 
-if __name__ == "__main__":
+def get_valid_action_names(action_mask):
+    """Get list of valid action names from mask"""
+    valid_actions = np.where(action_mask > 0)[0]
+    return [get_action_name(a) for a in valid_actions]
 
-    model_files = ["policy_agent_0.pt", "policy_agent_0.pt"]
+if __name__ == "__main__":
+    model_files = ["policy_agent_0.pt", "policy_agent_1.pt"]
     
-    print(" Monopoly AI Agent Demo")
+    print("🎮 Monopoly AI Agent Demo")
     print("Watching trained agents play...")
     
     # Watch the agents play
